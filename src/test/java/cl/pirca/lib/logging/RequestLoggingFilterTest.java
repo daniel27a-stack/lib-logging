@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.web.servlet.HandlerMapping;
 
 class RequestLoggingFilterTest {
@@ -219,5 +220,75 @@ class RequestLoggingFilterTest {
         })).isInstanceOf(IOException.class);
 
         assertThat(logs.events()).hasSize(3);
+    }
+
+    private void startAsync() {
+        request.setAsyncSupported(true);
+        request.startAsync();
+    }
+
+    private void asyncDispatch() {
+        request.setDispatcherType(jakarta.servlet.DispatcherType.ASYNC);
+        WebAsyncUtils.getAsyncManager(request);
+    }
+
+    @Test
+    void aFirstDispatchThatStartsAsyncWritesNoLineAndClearsTheMdc() throws Exception {
+        startAsync();
+
+        filter(Optional.of("acme"), Duration.ofSeconds(2)).doFilter(request, response, OK);
+
+        assertThat(logs.events()).isEmpty();
+        assertThat(MDC.get("correlationId")).isNull();
+        assertThat(MDC.get("tenant")).isNull();
+    }
+
+    @Test
+    void theAsyncDispatchWritesOneLineWithTheIdAndStartOfTheFirstDispatch() throws Exception {
+        request.addHeader("X-Correlation-Id", "bad value\nforged");
+        RequestLoggingFilter filter = filter(Optional.of("acme"), Duration.ofSeconds(2));
+        startAsync();
+        filter.doFilter(request, response, OK);
+        String sent = response.getHeader("X-Correlation-Id");
+        Thread.sleep(30);
+        request.getAsyncContext().complete();
+        asyncDispatch();
+        AtomicReference<String> seenId = new AtomicReference<>();
+        AtomicReference<String> seenTenant = new AtomicReference<>();
+
+        filter.doFilter(request, response, (req, res) -> {
+            seenId.set(MDC.get("correlationId"));
+            seenTenant.set(MDC.get("tenant"));
+        });
+
+        ILoggingEvent event = logs.only();
+        assertThat(seenId).hasValue(sent);
+        assertThat(seenTenant).hasValue("acme");
+        assertThat(event.getMDCPropertyMap()).containsEntry("correlationId", sent).containsEntry("tenant", "acme");
+        assertThat(event.getFormattedMessage()).matches("GET /debts/7 -> 200 in \\d+ ms");
+        String message = event.getFormattedMessage();
+        long millis = Long.parseLong(message.substring(message.lastIndexOf(" in ") + 4, message.length() - 3));
+        assertThat(millis).isGreaterThanOrEqualTo(30);
+        assertThat(MDC.get("correlationId")).isNull();
+        assertThat(MDC.get("tenant")).isNull();
+    }
+
+    @Test
+    void anExceptionInTheAsyncDispatchIsOneErrorLineWithTheTraceOnce() throws Exception {
+        RequestLoggingFilter filter = filter();
+        startAsync();
+        filter.doFilter(request, response, OK);
+        request.getAsyncContext().complete();
+        asyncDispatch();
+
+        filter.doFilter(request, response, (req, res) -> {
+            throw new IllegalStateException("late boom");
+        });
+
+        ILoggingEvent event = logs.only();
+        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+        assertThat(event.getThrowableProxy().getMessage()).isEqualTo("late boom");
+        assertThat(event.getFormattedMessage()).contains("-> 500");
+        assertThat(response.getStatus()).isEqualTo(500);
     }
 }

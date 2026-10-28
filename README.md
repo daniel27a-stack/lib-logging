@@ -33,7 +33,9 @@ The defaults are added with the lowest precedence, so the application can overri
   outgoing calls made with an injected `RestClient.Builder`.
 - MDC keys: `correlationId` and, when `lib-tenant` is on the classpath and the request has a tenant,
   `tenant` (`TenantContext.current()`). Without `lib-tenant` the application logs normally with no `tenant` key.
-- The MDC is cleared when the request ends.
+- The MDC is cleared when the request ends. For a controller that returns `Callable`, `CompletableFuture`
+  or `DeferredResult` the keys are set again in the async dispatch, so they are present while the handler
+  result is processed.
 
 ### Automatic logs and level policy
 
@@ -44,6 +46,10 @@ The defaults are added with the lowest precedence, so the application can overri
 | Request slower than `pirca.logging.slow-request-threshold` (default `2s`) | `WARN` |
 | 5xx response or unhandled exception, with the stack trace once | `ERROR` |
 | Entry and exit with duration of every method of controller and service beans | `DEBUG` (nothing at `INFO` or higher) |
+
+The request line is written once, when the request finishes, also for controllers that return `Callable`,
+`CompletableFuture` or `DeferredResult`: the status and the duration are the real ones, measured from the
+start of the request to the end of the async work.
 
 The method logs use Spring AOP: they only cover calls that reach a proxied bean, not calls inside the
 same class.
