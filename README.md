@@ -1,18 +1,84 @@
 # lib-logging
 
-Spring Boot auto-configuration library generated with `java-skeleton` (Gradle + `java-library`
+Logging library for servlet Spring Boot applications, generated with `java-skeleton` (Gradle + `java-library`
 plugin, Spring Boot BOM imported as a `platform()`; it is a plain jar, not an executable one).
 
-## Spring Boot auto-configuration
+## Usage
 
-Adding this library as a dependency of a Spring Boot application is enough to activate it: no
-`@Import` or `@ComponentScan` is needed. The auto-configuration classes are listed in
-`src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+Adding the dependency to a Spring Boot **servlet** application is enough: no `@Import` or
+`@ComponentScan` is needed, and nothing has to be written. `LoggingAutoConfiguration` is listed in
+`src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+and is active only in servlet web applications. Every bean backs off when the application defines its
+own bean of the same type.
 
-The placeholder `LibraryAutoConfiguration` registers a `LibraryInfo` bean with
-`@ConditionalOnMissingBean`, so a consumer can override it by defining its own bean. Replace it
-with the real technical content of the library and keep new auto-configuration classes listed in
-the `.imports` file. `LibraryAutoConfigurationIntTest` proves the activation.
+The library does not bring Spring Web, the servlet API or AspectJ: the application has them. For the
+automatic method logs the application needs `spring-boot-starter-aspectj` (Spring AOP). `lib-tenant`
+is optional.
+
+### Format
+
+| Profile | Format |
+|---|---|
+| none (default) | Readable text: time, level, service name (`spring.application.name`), thread, `[correlationId,tenant]`, logger and message |
+| `prod` | Structured JSON (Spring Boot structured logging, `logstash` format): MDC entries and on-demand fields are separate JSON fields |
+
+The defaults are added with the lowest precedence, so the application can override any of them
+(`logging.structured.format.console`, `logging.pattern.console`).
+
+### Correlation id and MDC
+
+- A request with the header `X-Correlation-Id` keeps that value (only `A-Z a-z 0-9 . _ -`, up to 128
+  characters, otherwise it is replaced); a request without it gets a generated UUID.
+- The value is returned in the response header `X-Correlation-Id` and is sent as `X-Correlation-Id` on
+  outgoing calls made with an injected `RestClient.Builder`.
+- MDC keys: `correlationId` and, when `lib-tenant` is on the classpath and the request has a tenant,
+  `tenant` (`TenantContext.current()`). Without `lib-tenant` the application logs normally with no `tenant` key.
+- The MDC is cleared when the request ends.
+
+### Automatic logs and level policy
+
+| What | Level |
+|---|---|
+| Each request, when it finishes: method, route, status and duration | `INFO` |
+| 4xx response (no stack trace) | `WARN` |
+| Request slower than `pirca.logging.slow-request-threshold` (default `2s`) | `WARN` |
+| 5xx response or unhandled exception, with the stack trace once | `ERROR` |
+| Entry and exit with duration of every method of controller and service beans | `DEBUG` (nothing at `INFO` or higher) |
+
+The method logs use Spring AOP: they only cover calls that reach a proxied bean, not calls inside the
+same class.
+
+One log per exception: an exception handler leaves the exception it handled in the request attribute
+`cl.pirca.lib.errors.EXCEPTION` and does not log it; the filter reads that attribute and writes the one
+request line (4xx `WARN` without trace, 5xx `ERROR` with trace). An exception that nobody handled is
+logged by the filter as `ERROR` with its trace and answered with a 500, so the servlet container does
+not log it again. This library does not depend on `lib-errors`.
+
+### The `Log` API
+
+For logs written on demand. The level is the last call: `debug()`, `info()`, `warn()`, `error()` or
+`error(Throwable)` (the stack trace is written once).
+
+```java
+Log.action("debts").description("Debts listed").field("count", 3).info();
+Log.action("payment").description("Payment failed").field("debtId", id).error(exception);
+```
+
+`action` is always the first field and `description` is the readable message. In text each field is
+`key=value`; in JSON each field is a separate field. The log inherits `correlationId` and `tenant` from the
+MDC and uses the logger of the class that calls `Log.action`.
+
+### Asynchronous work
+
+Tasks of `@Async` and of Spring's `applicationTaskExecutor` see the `correlationId` and the `tenant` of
+the thread that submitted them. `LoggingTaskDecorator` (a `@Primary` `TaskDecorator`) copies the MDC and also
+applies every other `TaskDecorator` bean (`lib-tenant`'s, or the application's own). Without `lib-tenant`
+only the correlation id travels.
+
+### Filter order
+
+`RequestLoggingFilter` has order `Ordered.HIGHEST_PRECEDENCE + 20`, greater than `TenantFilter.ORDER`
+(`HIGHEST_PRECEDENCE + 10`), so the tenant is already set when it runs.
 
 ## Build and test
 
