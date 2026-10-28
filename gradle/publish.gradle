@@ -1,0 +1,22 @@
+// Maven publishing. publishToMavenLocal works out of the box.
+// The target registry is pirca.registryUrl in gradle.properties.
+// Publishing to GitHub Packages needs a token with write:packages, read at build time from the
+// environment (GITHUB_ACTOR / GITHUB_TOKEN) or from Gradle properties (gpr.user / gpr.token, in
+// ~/.gradle/gradle.properties). Never write it in this project.
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri("${project.property('pirca.registryUrl')}/lib-logging")
+            credentials {
+                username = System.getenv('GITHUB_ACTOR') ?: project.findProperty('gpr.user')
+                password = System.getenv('GITHUB_TOKEN') ?: project.findProperty('gpr.token')
+            }
+        }
+    }
+}
