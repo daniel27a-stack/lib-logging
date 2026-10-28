@@ -8,12 +8,23 @@ jacoco = "0.8.16"
 pitest-plugin = "1.19.0"
 pitest-engine = "1.30.1"
 pitest-junit5 = "1.2.3"
+lib-tenant = "1.0.0"
 
 [libraries]
 # Spring Boot BOM, imported as a Gradle platform: it manages the versions below
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
+spring-boot-starter-aspectj = { module = "org.springframework.boot:spring-boot-starter-aspectj" }
+spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
+spring-web = { module = "org.springframework:spring-web" }
+spring-webmvc = { module = "org.springframework:spring-webmvc" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api" }
+slf4j-api = { module = "org.slf4j:slf4j-api" }
+# Pirca libraries (GitHub Packages)
+lib-tenant = { module = "cl.pirca.lib.tenant:lib-tenant", version.ref = "lib-tenant" }
 
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

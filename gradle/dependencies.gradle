@@ -3,6 +3,15 @@ dependencies {
     // Spring Boot BOM as a platform: it manages the versions of every Spring Boot dependency.
     implementation platform(libs.spring.boot.bom)
     implementation libs.spring.boot.autoconfigure
+    implementation libs.slf4j.api
+
+    // The consuming application brings the web stack, the AOP starter and (optionally) lib-tenant.
+    compileOnly libs.spring.web
+    compileOnly libs.spring.webmvc
+    compileOnly libs.jakarta.servlet.api
+    compileOnly libs.spring.boot.restclient
+    compileOnly libs.spring.boot.starter.aspectj
+    compileOnly libs.lib.tenant
 
     // api '...'            // dependencies exposed to consumers
     // implementation '...' // internal dependencies
@@ -10,12 +19,20 @@ dependencies {
     testImplementation platform(libs.spring.boot.bom)
     testImplementation libs.spring.boot.starter.test
     testImplementation libs.junit.jupiter
+    testImplementation libs.spring.boot.starter.webmvc
+    testImplementation libs.spring.boot.starter.restclient
+    testImplementation libs.spring.boot.starter.aspectj
+    testImplementation libs.lib.tenant
     testRuntimeOnly libs.junit.platform.launcher
 
     intTestImplementation platform(libs.spring.boot.bom)
     intTestImplementation libs.spring.boot.autoconfigure
     intTestImplementation libs.spring.boot.starter.test
     intTestImplementation libs.junit.jupiter
+    intTestImplementation libs.spring.boot.starter.webmvc
+    intTestImplementation libs.spring.boot.starter.restclient
+    intTestImplementation libs.spring.boot.starter.aspectj
+    intTestImplementation libs.lib.tenant
     intTestRuntimeOnly libs.junit.platform.launcher
 
     archTestImplementation platform(libs.spring.boot.bom)
