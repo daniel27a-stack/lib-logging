@@ -41,6 +41,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter implements Ordere
     public static final String ERROR_ATTRIBUTE = "cl.pirca.lib.errors.EXCEPTION";
 
     private static final Pattern VALID_CORRELATION_ID = Pattern.compile("[A-Za-z0-9._-]{1,128}");
+    private static final String START_ATTRIBUTE = RequestLoggingFilter.class.getName() + ".START";
+    private static final String CORRELATION_ID_ATTRIBUTE = RequestLoggingFilter.class.getName() + ".CORRELATION_ID";
     private static final Logger LOG = LoggerFactory.getLogger(RequestLoggingFilter.class);
 
     private final TenantResolver tenantResolver;
@@ -62,16 +64,25 @@ public class RequestLoggingFilter extends OncePerRequestFilter implements Ordere
         return ORDER;
     }
 
+    /** The line is written by the dispatch that finishes the request, so the async dispatch must run too. */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        long start = System.nanoTime();
-        String correlationId = correlationIdOf(request);
+        long start = startOf(request);
+        String correlationId = correlationIdOfDispatch(request);
         MDC.put(CORRELATION_ID_KEY, correlationId);
         tenantResolver.current().ifPresent(tenant -> MDC.put(TENANT_KEY, tenant));
         response.setHeader(CORRELATION_ID_HEADER, correlationId);
         try {
             chain.doFilter(request, response);
+            if (request.isAsyncStarted()) {
+                return;
+            }
             logRequest(request, response.getStatus(), elapsed(start), (Throwable) request.getAttribute(ERROR_ATTRIBUTE));
         } catch (ServletException | IOException | RuntimeException e) {
             logRequest(request, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, elapsed(start), unwrap(e));
@@ -80,6 +91,28 @@ public class RequestLoggingFilter extends OncePerRequestFilter implements Ordere
             MDC.remove(CORRELATION_ID_KEY);
             MDC.remove(TENANT_KEY);
         }
+    }
+
+    /** The start time is taken in the first dispatch and kept for the async one. */
+    private static long startOf(HttpServletRequest request) {
+        Object saved = request.getAttribute(START_ATTRIBUTE);
+        if (saved instanceof Long nanos) {
+            return nanos;
+        }
+        long now = System.nanoTime();
+        request.setAttribute(START_ATTRIBUTE, now);
+        return now;
+    }
+
+    /** The id is decided in the first dispatch and kept, so the async dispatch uses the one already sent. */
+    private static String correlationIdOfDispatch(HttpServletRequest request) {
+        Object saved = request.getAttribute(CORRELATION_ID_ATTRIBUTE);
+        if (saved instanceof String id) {
+            return id;
+        }
+        String id = correlationIdOf(request);
+        request.setAttribute(CORRELATION_ID_ATTRIBUTE, id);
+        return id;
     }
 
     private static String correlationIdOf(HttpServletRequest request) {
